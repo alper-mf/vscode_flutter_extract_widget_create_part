@@ -9,73 +9,64 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    const selectedText = editor.document.getText(editor.selection);
+    const selectedText = getSelectedText(editor);
     if (!selectedText) {
-      vscode.window.showErrorMessage('Lütfen bir widget seçin.');
+      vscode.window.showErrorMessage('Please select a widget.');
       return;
     }
 
-    // Yeni sınıf adını al
-    const newClassName = await vscode.window.showInputBox({
-      prompt: 'Yeni sınıf adını girin.',
-      value: 'MyNewWidget', // Varsayılan sınıf adı
-    });
-
+    // Add a new class name with the user input
+    const newClassName = await getNewClassName();
     if (!newClassName) {
       return;
     }
 
-    // Yeni sınıfın içeriği
-    const newClassText = `class ${newClassName} extends StatelessWidget {\n  @override\n  Widget build(BuildContext context) {\n    return ${selectedText.trim()};\n  }\n}`;
+    // Create a new class text
+    const newClassText = createNewClassText(newClassName, selectedText);
 
-    // Seçili metnin yerine yeni sınıfın örneğini oluştur
-    await editor.edit((editBuilder) => {
-      editBuilder.replace(editor.selection, `${newClassName}()`);
-    });
+
+    // Replace the selected text with the new instance
+    await replaceSelectedTextWithNewInstance(editor, newClassName);
 
     // Yeni sınıf dosyasını oluştur
-    let className = newClassName;
-    if (className.startsWith('_')) {
-      className = className.slice(1);
-    }
-    const parts = className.split(/(?=[A-Z])/);
-    parts[0] = parts[0].charAt(0).toLowerCase() + parts[0].slice(1);
-    const fileName = `${parts.join('_').toLowerCase()}.dart`;
+    const fileName = generateFileName(newClassName);
+ 
 
-    // A sınıfının başına part olarak ekle
+    // Add a part expression to the current file
     const currentFileContent = fs.readFileSync(editor.document.uri.fsPath).toString();
-    const partTextForCurrentClass = `part "${fileName}";\n\n`; // Part of ifadesi oluşturuluyor
+    const partTextForCurrentClass = createPartTextForCurrentClass(fileName);
+    const currentFileName = path.basename(editor.document.uri.fsPath, '.dart');
 
-    // Dosyanın başlangıcından itibaren ilk satıra kadar olan metni al
+    // Update the current file
     const firstLine = editor.document.lineAt(0).text.trim();
 
-    // Eğer main fonksiyonu yoksa part ifadesini dosyanın başına ekle
+    // If there is no main function, add the part expression to the beginning of the file
     let newFileContent;
     if (!firstLine.startsWith('void main()')) {
       newFileContent = `${partTextForCurrentClass}${currentFileContent}`;
     } else {
-      // Main fonksiyonu varsa, main fonksiyonundan sonra gelecek şekilde part ifadesini ekle
+      // Otherwise, add the part expression after the first curly brace
       const index = currentFileContent.indexOf('{');
       newFileContent = `${currentFileContent.substring(0, index)}\n\n${partTextForCurrentClass}${currentFileContent.substring(index)}`;
     }
 
-    // Dosyayı kaydet ve değiştirilmediğinden emin ol
+    // Update the current file and be sure that the file is not changed by another process
     try {
-      await editor.document.save(); // Dosyayı kaydet
+      await editor.document.save(); // Save the current file
     } catch (err) {
       console.error(err);
       return;
     }
 
-    const currentFileName = path.basename(editor.document.uri.fsPath, '.dart');
+
     const currentFileStat = fs.statSync(editor.document.uri.fsPath);
     const currentFileModificationTime = currentFileStat.mtimeMs;
     if (currentFileModificationTime > Date.now()) {
-      vscode.window.showErrorMessage(`Dosya "${currentFileName}" daha yeni bir sürüme sahip. Değişikliklerinizi kaydetmek için lütfen dosyayı yeniden açın ve farklı bir adla kaydedin.`);
+      vscode.window.showErrorMessage('The file has been changed. Please try again.');
       return;
     }
 
-    // Dosyayı tamamen güncelle
+    // Update the current file
     try {
       fs.writeFileSync(editor.document.uri.fsPath, newFileContent);
     } catch (err) {
@@ -83,22 +74,69 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    const currentDirectory = path.dirname(editor.document.uri.fsPath);
-    const newFilePath = path.join(currentDirectory, fileName);
+    createNewFile(editor, fileName, newClassText);
 
-    // Yeni dosyanın içeriğini oluştur
-    const partOfText = `part of "${currentFileName}.dart"; \n`;
-    try {
-      fs.writeFileSync(newFilePath, `${partOfText}${newClassText}`);
-    } catch (err) {
-      console.error(err);
-      return;
-    }
-
-    vscode.window.showInformationMessage(`${newClassName} adlı yeni widget sınıfı başarıyla oluşturuldu.`);
+    vscode.window.showInformationMessage(`The new file has been created: ${fileName}`);
   });
 
   context.subscriptions.push(disposable);
 }
 
 export function deactivate() {}
+
+
+/// Get the selected text
+function getSelectedText(editor: vscode.TextEditor) {
+  return editor.document.getText(editor.selection);
+}
+
+/// Get a new class name from the user
+async function getNewClassName() {
+  return await vscode.window.showInputBox({
+    prompt: 'Enter the new class name.',
+    value: 'MyNewWidget',
+  });
+}
+
+/// Create a new class text
+function createNewClassText(newClassName: string, selectedText: string) {
+  return `class ${newClassName} extends StatelessWidget {\n  @override\n  Widget build(BuildContext context) {\n    return ${selectedText.trim()};\n  }\n}`;
+}
+
+/// Replace the selected text with the new instance
+async function replaceSelectedTextWithNewInstance(editor: vscode.TextEditor, newClassName: string) {
+  await editor.edit((editBuilder) => {
+    editBuilder.replace(editor.selection, `${newClassName}()`);
+  });
+}
+
+/// Generate a file name from the class name
+function generateFileName(className: string) {
+  let fileName = className;
+  if (fileName.startsWith('_')) {
+    fileName = fileName.slice(1);
+  }
+  const parts = fileName.split(/(?=[A-Z])/);
+  parts[0] = parts[0].charAt(0).toLowerCase() + parts[0].slice(1);
+  return `${parts.join('_').toLowerCase()}.dart`;
+}
+/// Add a part expression to the current file
+function createPartTextForCurrentClass(fileName: string) {
+  return `part "${fileName}";\n\n`;
+}
+
+/// Create a new file with the given file name and class text
+function createNewFile(editor: vscode.TextEditor, fileName: string, newClassText: string) {
+  const currentDirectory = path.dirname(editor.document.uri.fsPath);
+  const newFilePath = path.join(currentDirectory, fileName);
+
+  const currentFileName = path.basename(editor.document.uri.fsPath, '.dart');
+  const partOfText = `part of "${currentFileName}.dart"; \n`;
+
+  try {
+    fs.writeFileSync(newFilePath, `${partOfText}${newClassText}`);
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+}
