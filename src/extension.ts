@@ -30,6 +30,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Yeni sınıf dosyasını oluştur
     const fileName = generateFileName(newClassName);
+
+    // Save and format the document
+    await editor.document.save();
+    await vscode.commands.executeCommand('editor.action.formatDocument');
  
 
     // Add a part expression to the current file
