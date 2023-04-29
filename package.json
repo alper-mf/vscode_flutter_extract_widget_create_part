@@ -3,6 +3,12 @@
   "displayName": "Flutter Extract Widget and Create Part",
   "description": "Extracts a Flutter widget and creates a part file to use it.",
   "version": "0.0.1",
+  "license": "MIT",
+  "publisher": "AlperDuzgun",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alper-mf/vscode_flutter_extract_widget_create_part.git"
+  },
   "engines": {
     "vscode": "^1.77.0"
   },
